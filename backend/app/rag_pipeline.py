@@ -3,6 +3,7 @@ import uuid
 from typing import Dict, Any, Optional, List
 import logging
 from PIL import Image
+import os
 
 from app.embedding import get_embedding_service
 from app.opensearch_client import get_opensearch_client
@@ -81,9 +82,14 @@ class RAGPipeline:
             if use_retrieved_images:
                 logger.info(f"Processing query {query_id}: Loading retrieved images")
                 from app.dicom_processor import load_image
+                base_path = settings.dicom_data_path
                 for doc in retrieved_docs:
                     try:
-                        img = load_image(doc['image_path'])
+                        img_path = doc['image_path']
+                        # Resolve relative paths against configured DICOM base path
+                        if not os.path.isabs(img_path):
+                            img_path = os.path.join(base_path, img_path)
+                        img = load_image(img_path)
                         retrieved_images.append(img)
                     except Exception as e:
                         logger.warning(f"Could not load image {doc['image_path']}: {str(e)}")
