@@ -1,0 +1,13 @@
+[
+  {
+    "image_path": "scan1.dcm",
+    "short_description": "Chest X-ray showing normal lung fields",
+    "full_description": "Posteroanterior chest radiograph demonstrates clear lung fields bilaterally with no evidence of acute cardiopulmonary disease. The cardiac silhouette is within normal limits. No pleural effusion or pneumothorax identified."
+  },
+  {
+    "image_path": "scan2.dcm",
+    "short_description": "Lateral chest X-ray with minor atelectasis",
+    "full_description": "Lateral chest radiograph reveals minor atelectasis in the right lower lobe. The heart size is normal. No significant pleural abnormalities noted. The visualized osseous structures are intact."
+  }
+]
+

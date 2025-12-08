@@ -20,6 +20,7 @@ build/
 # Environment variables
 .env
 .env.local
+backend/.env
 
 # IDE
 .vscode/
@@ -33,7 +34,9 @@ build/
 Thumbs.db
 
 # Data
-data/
+data/*
+!data/.gitkeep
+!data/metadata.json.example
 *.dcm
 *.dicom
 
