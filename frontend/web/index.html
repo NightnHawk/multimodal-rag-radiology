@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Workflow - RTG Scan Analysis</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>RAG Workflow - RTG Scan Analysis</h1>
+            <p class="subtitle">Upload DICOM or image files to generate AI-powered descriptions</p>
+        </header>
+
+        <div class="status-bar" id="statusBar">
+            <span id="statusText">Ready</span>
+        </div>
+
+        <main>
+            <section class="upload-section">
+                <h2>Upload Image</h2>
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="fileInput" accept=".dcm,.dicom,.png,.jpg,.jpeg" hidden>
+                    <div class="upload-content">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 2 0 0 1-2 2H5a2 2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        <p>Click to upload or drag and drop</p>
+                        <p class="file-types">DICOM, PNG, or JPG files</p>
+                    </div>
+                </div>
+                <div class="options">
+                    <label>
+                        <input type="checkbox" id="useRetrievedImages">
+                        Include retrieved images in analysis
+                    </label>
+                </div>
+                <button id="queryButton" class="btn btn-primary" disabled>Analyze Image</button>
+            </section>
+
+            <section class="results-section" id="resultsSection" style="display: none;">
+                <h2>Results</h2>
+                
+                <div class="quality-indicator" id="qualityIndicator">
+                    <span class="quality-badge" id="qualityBadge"></span>
+                    <span class="quality-score" id="qualityScore"></span>
+                </div>
+
+                <div class="result-card">
+                    <h3>Generated Description</h3>
+                    <div class="description" id="generatedDescription"></div>
+                </div>
+
+                <div class="result-card">
+                    <h3>Similar Reference Cases</h3>
+                    <div id="retrievedDocuments"></div>
+                </div>
+
+                <div class="actions">
+                    <button id="regenerateButton" class="btn btn-secondary">Regenerate Answer</button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>RAG Workflow API - Powered by OpenSearch & GPT-4o</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
