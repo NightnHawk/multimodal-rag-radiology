@@ -28,8 +28,37 @@ def index_from_json(json_path: str = None, dicom_base_path: str = None):
         json_path: Path to JSON metadata file (uses config default if None)
         dicom_base_path: Base path for DICOM files (uses config default if None)
     """
-    json_path = json_path or settings.json_metadata_path
-    dicom_base_path = dicom_base_path or settings.dicom_data_path
+    # Get project root (parent of scripts directory)
+    project_root = Path(__file__).parent.parent
+    
+    # Resolve paths relative to project root
+    if json_path is None:
+        json_path = settings.json_metadata_path
+        # If it's a relative path, resolve it relative to project root
+        if not os.path.isabs(json_path):
+            json_path = project_root / json_path.replace("../", "")
+        else:
+            json_path = Path(json_path)
+    else:
+        json_path = Path(json_path)
+        if not json_path.is_absolute():
+            json_path = project_root / json_path
+    
+    if dicom_base_path is None:
+        dicom_base_path = settings.dicom_data_path
+        # If it's a relative path, resolve it relative to project root
+        if not os.path.isabs(dicom_base_path):
+            dicom_base_path = project_root / dicom_base_path.replace("../", "")
+        else:
+            dicom_base_path = Path(dicom_base_path)
+    else:
+        dicom_base_path = Path(dicom_base_path)
+        if not dicom_base_path.is_absolute():
+            dicom_base_path = project_root / dicom_base_path
+    
+    # Convert to string for compatibility
+    json_path = str(json_path)
+    dicom_base_path = str(dicom_base_path)
     
     # Check if JSON file exists
     if not os.path.exists(json_path):
@@ -92,11 +121,17 @@ def index_from_json(json_path: str = None, dicom_base_path: str = None):
                 skipped_count += 1
                 continue
             
-            # Load and embed image
+            # Extract image from DICOM file and embed it
             logger.info(f"Item {i}/{len(metadata)}: Processing {image_path}")
             try:
+                # Extract image from DICOM file (or load regular image)
+                # This handles DICOM files by extracting pixel data and converting to PIL Image
                 image = load_image(full_image_path)
+                logger.debug(f"Item {i}/{len(metadata)}: Image extracted, size: {image.size}, mode: {image.mode}")
+                
+                # Generate embedding from the extracted image
                 embedding = embedding_service.embed_image(image)
+                logger.debug(f"Item {i}/{len(metadata)}: Embedding generated, dimension: {len(embedding)}")
             except Exception as e:
                 logger.error(f"Item {i}/{len(metadata)}: Error processing image: {str(e)}")
                 error_count += 1

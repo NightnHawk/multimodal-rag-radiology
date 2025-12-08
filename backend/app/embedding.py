@@ -31,11 +31,15 @@ class EmbeddingService:
         if self.model is None:
             logger.info(f"Loading CLIP model: {self.model_name}")
             try:
+                # Load model without pretrained parameter (for HuggingFace hub models)
+                # Don't pass device parameter - move model after loading
                 self.model, _, self.preprocess = open_clip.create_model_and_transforms(
-                    self.model_name,
-                    pretrained=True,
-                    device=self.device
+                    self.model_name
                 )
+                # Load tokenizer separately
+                self.tokenizer = open_clip.get_tokenizer(self.model_name)
+                # Move model to device after loading
+                self.model = self.model.to(self.device)
                 self.model.eval()
                 logger.info("Model loaded successfully")
             except Exception as e:

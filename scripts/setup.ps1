@@ -58,6 +58,14 @@ if (-not (Test-Path ".env")) {
 $dockerPath = Join-Path $PSScriptRoot "..\docker"
 Set-Location $dockerPath
 
+# Stop and remove existing containers if they exist
+Write-Host "Checking for existing Docker containers..." -ForegroundColor Yellow
+try {
+    docker-compose down 2>&1 | Out-Null
+} catch {
+    # Ignore errors if containers don't exist
+}
+
 # Start OpenSearch
 Write-Host "Starting OpenSearch with Docker Compose..." -ForegroundColor Yellow
 docker-compose up -d

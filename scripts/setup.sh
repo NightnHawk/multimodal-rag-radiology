@@ -52,6 +52,10 @@ fi
 # Navigate to docker directory
 cd ../docker || exit 1
 
+# Stop and remove existing containers if they exist
+echo "Checking for existing Docker containers..."
+docker-compose down 2>/dev/null || true
+
 # Start OpenSearch
 echo "Starting OpenSearch with Docker Compose..."
 docker-compose up -d
