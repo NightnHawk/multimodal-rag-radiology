@@ -16,8 +16,10 @@ from app.models import (
 from app.rag_pipeline import get_rag_pipeline
 from app.opensearch_client import get_opensearch_client
 from app.embedding import get_embedding_service
-from app.dicom_processor import load_image
+from app.dicom_processor import load_image, load_image_from_bytes
 from app.config import settings
+import base64
+import io
 
 # Configure logging
 logging.basicConfig(
@@ -265,6 +267,46 @@ async def regenerate_query(
         raise HTTPException(
             status_code=500,
             detail=f"Error regenerating query: {str(e)}"
+        )
+
+
+@app.post("/preview")
+async def preview_image(file: UploadFile = File(...)):
+    """
+    Preview endpoint: Convert DICOM or image file to displayable PNG format.
+    
+    Args:
+        file: Uploaded file (DICOM, PNG, or JPG)
+        
+    Returns:
+        JSON with base64-encoded PNG image
+    """
+    try:
+        # Read file bytes
+        file_bytes = await file.read()
+        filename = file.filename or "unknown"
+        
+        # Load image (handles both DICOM and regular images)
+        image = load_image_from_bytes(file_bytes, filename)
+        
+        # Convert to PNG bytes
+        buffered = io.BytesIO()
+        image.save(buffered, format="PNG")
+        img_bytes = buffered.getvalue()
+        
+        # Encode to base64
+        img_base64 = base64.b64encode(img_bytes).decode()
+        
+        return {
+            "image": f"data:image/png;base64,{img_base64}",
+            "format": "png"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in preview endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating preview: {str(e)}"
         )
 
 

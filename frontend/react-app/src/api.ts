@@ -31,6 +31,17 @@ export async function regenerate(queryId: string, file?: File): Promise<QueryRes
   return data;
 }
 
+export async function previewImage(file: File): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const { data } = await api.post<{ image: string; format: string }>("/preview", form, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+  return data.image;
+}
+
+
 
 
 

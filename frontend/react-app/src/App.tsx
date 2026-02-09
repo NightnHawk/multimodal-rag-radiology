@@ -62,38 +62,38 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-slate-100">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="bg-white border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">RAG RTG Search</h1>
-            <p className="text-sm text-slate-500">DICOM / PNG / JPG retrieval + GPT-4o</p>
+            <h1 className="text-lg font-semibold text-slate-900">RAG RTG Search</h1>
+            <p className="text-xs text-slate-500 mt-0.5">DICOM / PNG / JPG retrieval + GPT-4o</p>
           </div>
-          <div className="text-xs text-slate-500">
-            API: {import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"}
+          <div className="text-xs text-slate-400 font-mono">
+            {import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"}
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 space-y-4">
+      <main className="max-w-7xl mx-auto px-4 py-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className="lg:col-span-2 space-y-3">
             <UploadArea onFileSelected={handleUpload} />
 
-            <div className="card p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="card p-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
                 <input
                   id="toggle"
                   type="checkbox"
-                  className="h-4 w-4"
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary"
                   checked={useRetrievedImages}
                   onChange={(e) => setUseRetrievedImages(e.target.checked)}
                 />
-                <label htmlFor="toggle" className="text-sm text-slate-700">
+                <label htmlFor="toggle" className="text-xs text-slate-700 cursor-pointer">
                   Include retrieved images in GPT prompt
                 </label>
               </div>
               <button
-                className="btn btn-primary"
+                className="btn btn-primary text-sm px-3 py-1.5"
                 disabled={!canAnalyze}
                 onClick={handleAnalyze}
               >
@@ -104,7 +104,7 @@ function App() {
             <Results result={result} loading={loading} onRegenerate={handleRegenerate} />
           </div>
 
-          <div className="space-y-4">
+          <div>
             <History items={history} onSelect={handleHistorySelect} />
           </div>
         </div>
@@ -114,6 +114,7 @@ function App() {
 }
 
 export default App;
+
 
 
 
