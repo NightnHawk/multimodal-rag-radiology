@@ -10,6 +10,7 @@ from app.opensearch_client import get_opensearch_client
 from app.gpt_client import get_gpt_client
 from app.ai_judge import get_ai_judge
 from app.dicom_processor import load_image_from_bytes
+from app.string_similarity import StringSimilarity
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,18 @@ class RAGPipeline:
         self.opensearch_client = get_opensearch_client()
         self.gpt_client = get_gpt_client()
         self.ai_judge = get_ai_judge()
+        
+        # Initialize string similarity validator if enabled
+        self.string_similarity = None
+        if settings.enable_description_validation:
+            try:
+                self.string_similarity = StringSimilarity(
+                    sentence_transformer_model=settings.sentence_transformer_model
+                )
+                logger.info("String similarity validation enabled")
+            except Exception as e:
+                logger.warning(f"Failed to initialize string similarity validator: {str(e)}")
+                logger.warning("Continuing without description validation")
         
         # Ensure index exists
         if not self.opensearch_client.index_exists():
@@ -60,12 +73,92 @@ class RAGPipeline:
             embedding = self.embedding_service.embed_image(input_image)
             embedding_list = embedding.tolist()
             
-            # Step 3: Retrieve similar documents from OpenSearch
+            # Step 3: Retrieve and validate documents until we have exactly k_retrieval_count validated documents
             logger.info(f"Processing query {query_id}: Searching OpenSearch")
-            retrieved_docs = self.opensearch_client.search_similar(
-                embedding_list,
-                k=settings.k_retrieval_count
-            )
+            target_count = settings.k_retrieval_count
+            validated_docs = []
+            all_retrieved_docs = []
+            excluded_doc_ids = []
+            validation_info = None
+            max_iterations = 5  # Prevent infinite loops
+            iteration = 0
+            use_validation = (self.string_similarity and settings.enable_description_validation 
+                            and settings.ensure_exact_count)
+            
+            while len(validated_docs) < target_count and iteration < max_iterations:
+                iteration += 1
+                # Calculate how many more documents we need
+                needed = target_count - len(validated_docs)
+                
+                if use_validation:
+                    # Retrieve more than needed to account for potential outliers
+                    retrieve_count = max(needed, int(target_count * settings.initial_retrieval_multiplier))
+                else:
+                    # No validation - just retrieve what we need
+                    retrieve_count = needed
+                
+                logger.info(
+                    f"Retrieval iteration {iteration}: Need {needed} more documents, "
+                    f"retrieving {retrieve_count} (excluding {len(excluded_doc_ids)} already processed)"
+                )
+                
+                # Retrieve documents (excluding already processed ones)
+                batch_docs = self.opensearch_client.search_similar(
+                    embedding_list,
+                    k=retrieve_count,
+                    exclude_doc_ids=excluded_doc_ids if excluded_doc_ids else None
+                )
+                
+                if not batch_docs:
+                    logger.warning(f"No more documents available in index")
+                    break
+                
+                all_retrieved_docs.extend(batch_docs)
+                
+                # Validate this batch if validation is enabled
+                if use_validation:
+                    logger.info(f"Validating batch of {len(batch_docs)} documents")
+                    batch_validated, batch_outliers, batch_validation_info = self.string_similarity.validate_retrieved_documents(
+                        batch_docs,
+                        similarity_threshold=settings.similarity_threshold,
+                        min_approved_ratio=settings.min_approved_ratio
+                    )
+                    
+                    # Add validated documents to our collection
+                    validated_docs.extend(batch_validated)
+                    
+                    # Track excluded document IDs for next iteration
+                    for doc in batch_docs:
+                        if doc.get("_id"):
+                            excluded_doc_ids.append(doc["_id"])
+                    
+                    # Update validation info (aggregate across all batches)
+                    if validation_info is None:
+                        validation_info = batch_validation_info.copy()
+                        validation_info["total_retrieved"] = len(batch_docs)
+                        validation_info["total_validated"] = len(batch_validated)
+                        validation_info["iterations"] = iteration
+                    else:
+                        validation_info["total_retrieved"] += len(batch_docs)
+                        validation_info["total_validated"] = len(validated_docs)
+                        validation_info["iterations"] = iteration
+                    
+                    logger.info(
+                        f"Batch validation: {len(batch_validated)} validated, "
+                        f"{len(batch_outliers)} outliers. Total validated: {len(validated_docs)}/{target_count}"
+                    )
+                else:
+                    # No validation - use all documents
+                    validated_docs.extend(batch_docs)
+                    if len(validated_docs) >= target_count:
+                        break
+                    # Track excluded document IDs for next iteration
+                    for doc in batch_docs:
+                        if doc.get("_id"):
+                            excluded_doc_ids.append(doc["_id"])
+            
+            # Take exactly target_count documents
+            retrieved_docs = validated_docs[:target_count]
             
             if not retrieved_docs:
                 return {
@@ -74,8 +167,29 @@ class RAGPipeline:
                     "retrieved_documents": [],
                     "quality_score": None,
                     "quality_approved": False,
-                    "message": "No similar documents found in index. Please index some data first."
+                    "message": "No similar documents found in index. Please index some data first.",
+                    "validation_info": validation_info
                 }
+            
+            # Update validation info with final counts
+            if validation_info:
+                validation_info["final_count"] = len(retrieved_docs)
+                validation_info["requested_count"] = target_count
+                if len(retrieved_docs) < target_count:
+                    logger.warning(
+                        f"Could only retrieve {len(retrieved_docs)} validated documents "
+                        f"out of {target_count} requested after {iteration} iterations"
+                    )
+                else:
+                    logger.info(
+                        f"Successfully retrieved exactly {len(retrieved_docs)} validated documents "
+                        f"after {iteration} iteration(s)"
+                    )
+            elif use_validation is False and len(retrieved_docs) < target_count:
+                logger.warning(
+                    f"Could only retrieve {len(retrieved_docs)} documents "
+                    f"out of {target_count} requested (validation disabled)"
+                )
             
             # Step 4: Optionally load retrieved images
             retrieved_images = []
@@ -124,7 +238,8 @@ class RAGPipeline:
                 "retrieved_documents": retrieved_docs,
                 "quality_score": evaluation["quality_score"],
                 "quality_approved": evaluation["approved"],
-                "message": evaluation["feedback"] if not evaluation["approved"] else None
+                "message": evaluation["feedback"] if not evaluation["approved"] else None,
+                "validation_info": validation_info
             }
             
             logger.info(f"Query {query_id} completed: approved={evaluation['approved']}")
@@ -138,7 +253,8 @@ class RAGPipeline:
                 "retrieved_documents": [],
                 "quality_score": None,
                 "quality_approved": False,
-                "message": f"Error processing query: {str(e)}"
+                "message": f"Error processing query: {str(e)}",
+                "validation_info": None
             }
     
     def regenerate_query(
@@ -170,7 +286,8 @@ class RAGPipeline:
                 "retrieved_documents": [],
                 "quality_score": None,
                 "quality_approved": False,
-                "message": "Cannot regenerate without image. Please provide image bytes."
+                "message": "Cannot regenerate without image. Please provide image bytes.",
+                "validation_info": None
             }
 
 

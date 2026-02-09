@@ -26,6 +26,7 @@ class RetrievedDocument(BaseModel):
     short_description: str
     full_description: str
     score: float
+    mean_similarity: Optional[float] = None  # Mean similarity score from validation
 
 
 class QueryResponse(BaseModel):
@@ -36,6 +37,7 @@ class QueryResponse(BaseModel):
     quality_score: Optional[float] = None
     quality_approved: bool
     message: Optional[str] = None
+    validation_info: Optional[Dict[str, Any]] = None  # Description validation results
 
 
 class HealthResponse(BaseModel):

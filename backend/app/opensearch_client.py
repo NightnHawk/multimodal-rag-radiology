@@ -168,7 +168,8 @@ class OpenSearchClient:
         self,
         embedding: List[float],
         k: Optional[int] = None,
-        index_name: Optional[str] = None
+        index_name: Optional[str] = None,
+        exclude_doc_ids: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
         Search for similar documents using k-NN.
@@ -177,20 +178,26 @@ class OpenSearchClient:
             embedding: Query embedding vector
             k: Number of results to return (uses config default if None)
             index_name: Name of the index (uses config default if None)
+            exclude_doc_ids: Optional list of document IDs to exclude from results
+                           (Note: OpenSearch k-NN doesn't support exclusion directly,
+                            so we retrieve more and filter client-side)
             
         Returns:
-            List of retrieved documents with scores
+            List of retrieved documents with scores and document IDs
         """
         index = index_name or settings.index_name
         k_value = k or settings.k_retrieval_count
         
+        # Retrieve more documents if we need to exclude some
+        retrieve_size = k_value * 2 if exclude_doc_ids else k_value
+        
         query = {
-            "size": k_value,
+            "size": retrieve_size,
             "query": {
                 "knn": {
                     "embedding": {
                         "vector": embedding,
-                        "k": k_value
+                        "k": retrieve_size
                     }
                 }
             },
@@ -202,15 +209,25 @@ class OpenSearchClient:
         try:
             response = self.client.search(index=index, body=query)
             results = []
+            excluded_set = set(exclude_doc_ids) if exclude_doc_ids else set()
             
             for hit in response['hits']['hits']:
+                # Skip excluded documents
+                if hit['_id'] in excluded_set:
+                    continue
+                
                 source = hit['_source']
                 results.append({
                     "image_path": source.get("image_path", ""),
                     "short_description": source.get("short_description", ""),
                     "full_description": source.get("full_description", ""),
-                    "score": hit['_score']
+                    "score": hit['_score'],
+                    "_id": hit['_id']  # Include document ID for exclusion in subsequent searches
                 })
+                
+                # Stop once we have enough results
+                if len(results) >= k_value:
+                    break
             
             return results
             

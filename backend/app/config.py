@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     embedding_dimension: int = 768
     k_retrieval_count: int = 5
     
+    # String Similarity Validation Configuration
+    enable_description_validation: bool = True
+    similarity_threshold: float = 0.5
+    min_approved_ratio: float = 0.6
+    filter_outliers: bool = True  # If True, remove outliers from retrieved documents
+    ensure_exact_count: bool = True  # If True, ensure exactly k_retrieval_count validated documents
+    initial_retrieval_multiplier: float = 2.0  # Retrieve this many times more documents initially
+    sentence_transformer_model: str = "kamalkraj/BioSimCSE-BioLinkBERT-BASE"
+    
     # Model Configuration
     clip_model_name: str = "hf-hub:luhuitong/CLIP-ViT-L-14-448px-MedICaT-ROCO"
     

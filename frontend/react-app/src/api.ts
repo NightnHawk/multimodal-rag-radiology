@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import type { QueryResponse } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -13,10 +13,20 @@ export async function queryImage(file: File, useRetrievedImages: boolean): Promi
   form.append("file", file);
   form.append("use_retrieved_images", String(useRetrievedImages));
 
-  const { data } = await api.post<QueryResponse>("/query", form, {
-    headers: { "Content-Type": "multipart/form-data" }
-  });
-  return data;
+  try {
+    const { data } = await api.post<QueryResponse>("/query", form, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
+    console.log("API Response received:", data);
+    return data;
+  } catch (error) {
+    console.error("API Error:", error);
+    if (axios.isAxiosError(error)) {
+      console.error("Response data:", error.response?.data);
+      console.error("Response status:", error.response?.status);
+    }
+    throw error;
+  }
 }
 
 export async function regenerate(queryId: string, file?: File): Promise<QueryResponse> {

@@ -30,11 +30,26 @@ function App() {
     setLoading(true);
     try {
       const res = await queryImage(file, useRetrievedImages);
-      setResult(res);
-      setHistory((prev) => [...prev, { timestamp: Date.now(), fileName: file.name, result: res, file }]);
+      // Validate response structure
+      if (!res || typeof res !== 'object') {
+        throw new Error("Invalid response format");
+      }
+      // Ensure required fields exist
+      const validatedRes: QueryResponse = {
+        query_id: res.query_id || '',
+        generated_description: res.generated_description || '',
+        retrieved_documents: Array.isArray(res.retrieved_documents) ? res.retrieved_documents : [],
+        quality_score: res.quality_score ?? null,
+        quality_approved: res.quality_approved ?? false,
+        message: res.message ?? null,
+        validation_info: res.validation_info ?? null
+      };
+      setResult(validatedRes);
+      setHistory((prev) => [...prev, { timestamp: Date.now(), fileName: file.name, result: validatedRes, file }]);
     } catch (err) {
-      console.error(err);
-      alert("Error processing the file. Check console for details.");
+      console.error("Error processing file:", err);
+      alert(`Error processing the file: ${err instanceof Error ? err.message : 'Unknown error'}. Check console for details.`);
+      setResult(null);
     } finally {
       setLoading(false);
     }
