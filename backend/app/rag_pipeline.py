@@ -47,7 +47,8 @@ class RAGPipeline:
         self,
         image_bytes: bytes,
         filename: str,
-        use_retrieved_images: bool = False
+        use_retrieved_images: bool = False,
+        clear_context: bool = False
     ) -> Dict[str, Any]:
         """
         Process a query through the complete RAG pipeline.
@@ -56,6 +57,7 @@ class RAGPipeline:
             image_bytes: Image file as bytes (DICOM, PNG, or JPG)
             filename: Original filename
             use_retrieved_images: Whether to include retrieved images in GPT prompt
+            clear_context: If True, start a fresh conversation with GPT (no influence from previous queries)
             
         Returns:
             Dictionary with query_id, generated_description, retrieved_documents,
@@ -168,7 +170,8 @@ class RAGPipeline:
                     "quality_score": None,
                     "quality_approved": False,
                     "message": "No similar documents found in index. Please index some data first.",
-                    "validation_info": validation_info
+                    "validation_info": validation_info,
+                    "prompt_used": None
                 }
             
             # Update validation info with final counts
@@ -209,19 +212,44 @@ class RAGPipeline:
                         logger.warning(f"Could not load image {doc['image_path']}: {str(e)}")
             
             # Step 5: Generate description using GPT-4o
-            logger.info(f"Processing query {query_id}: Generating description with GPT-4o")
+            logger.info(f"Processing query {query_id}: Generating description with GPT-4o (clear_context={clear_context})")
+            prompt_used = None
             if use_retrieved_images and retrieved_images:
-                generated_description = self.gpt_client.generate_with_retrieved_images(
+                generated_description, prompt_used = self.gpt_client.generate_with_retrieved_images(
                     input_image,
                     retrieved_docs,
-                    retrieved_images
+                    retrieved_images,
+                    clear_context=clear_context
                 )
             else:
-                generated_description = self.gpt_client.generate_description(
+                generated_description, prompt_used = self.gpt_client.generate_description(
                     input_image,
                     retrieved_docs,
-                    filename.split('.')[-1].lower()
+                    filename.split('.')[-1].lower(),
+                    clear_context=clear_context
                 )
+            
+            if not prompt_used:
+                logger.warning(f"Warning: prompt_used is None for query {query_id} - building fallback prompt")
+                # Build prompt as fallback
+                try:
+                    if use_retrieved_images and retrieved_images:
+                        prompt_text = self.gpt_client._build_prompt_with_images(retrieved_docs)
+                    else:
+                        prompt_text = self.gpt_client._build_prompt(retrieved_docs, filename.split('.')[-1].lower())
+                    system_prompt = "You are an expert chest X-ray radiologist."
+                    if clear_context:
+                        system_prompt += " This is a new, independent analysis. Do not reference or be influenced by any previous queries or conversations."
+                    if use_retrieved_images and retrieved_images:
+                        prompt_used = f"System: {system_prompt}\n\nUser: {prompt_text}\n\n[Images: {len(retrieved_images) + 1} images - input image + {len(retrieved_images)} reference images, all base64 encoded]"
+                    else:
+                        prompt_used = f"System: {system_prompt}\n\nUser: {prompt_text}\n\n[Image: base64 encoded]"
+                    logger.info(f"Built fallback prompt for query {query_id}")
+                except Exception as e:
+                    logger.error(f"Could not build fallback prompt: {str(e)}")
+                    prompt_used = "Error: Could not build prompt"
+            
+            logger.info(f"Prompt used length: {len(prompt_used) if prompt_used else 0}")
             
             # Step 6: Validate with AI-as-Judge
             logger.info(f"Processing query {query_id}: Validating with AI Judge")
@@ -232,6 +260,11 @@ class RAGPipeline:
             )
             
             # Step 7: Return results
+            # Ensure prompt_used is always a string, never None
+            if not prompt_used:
+                logger.error(f"prompt_used is still None/empty for query {query_id} after all attempts")
+                prompt_used = "Error: Prompt could not be retrieved"
+            
             result = {
                 "query_id": query_id,
                 "generated_description": generated_description,
@@ -239,8 +272,11 @@ class RAGPipeline:
                 "quality_score": evaluation["quality_score"],
                 "quality_approved": evaluation["approved"],
                 "message": evaluation["feedback"] if not evaluation["approved"] else None,
-                "validation_info": validation_info
+                "validation_info": validation_info,
+                "prompt_used": prompt_used
             }
+            
+            logger.info(f"Returning result with prompt_used length: {len(prompt_used)}")
             
             logger.info(f"Query {query_id} completed: approved={evaluation['approved']}")
             return result
@@ -254,7 +290,8 @@ class RAGPipeline:
                 "quality_score": None,
                 "quality_approved": False,
                 "message": f"Error processing query: {str(e)}",
-                "validation_info": None
+                "validation_info": None,
+                "prompt_used": None
             }
     
     def regenerate_query(
@@ -287,7 +324,8 @@ class RAGPipeline:
                 "quality_score": None,
                 "quality_approved": False,
                 "message": "Cannot regenerate without image. Please provide image bytes.",
-                "validation_info": None
+                "validation_info": None,
+                "prompt_used": None
             }
 
 

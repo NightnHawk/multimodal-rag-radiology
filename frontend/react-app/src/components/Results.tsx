@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import type { QueryResponse } from "../types";
 
 type Props = {
@@ -8,6 +8,9 @@ type Props = {
 };
 
 export const Results: React.FC<Props> = ({ result, loading, onRegenerate }) => {
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [copiedJson, setCopiedJson] = useState(false);
+
   if (!result) return null;
 
   // Defensive checks for result structure
@@ -17,6 +20,44 @@ export const Results: React.FC<Props> = ({ result, loading, onRegenerate }) => {
   
   const retrievedDocs = result.retrieved_documents || [];
   const validationInfo = result.validation_info;
+
+  const copyPromptToClipboard = async () => {
+    if (!result.prompt_used) return;
+    
+    try {
+      await navigator.clipboard.writeText(result.prompt_used);
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy prompt:", err);
+      alert("Failed to copy prompt to clipboard");
+    }
+  };
+
+  const copyJsonToClipboard = async () => {
+    if (!result) return;
+    
+    try {
+      const jsonOutput = {
+        query_id: result.query_id,
+        generated_description: result.generated_description,
+        retrieved_documents: result.retrieved_documents,
+        quality_score: result.quality_score,
+        quality_approved: result.quality_approved,
+        message: result.message,
+        validation_info: result.validation_info,
+        prompt_used: result.prompt_used
+      };
+      
+      const jsonString = JSON.stringify(jsonOutput, null, 2);
+      await navigator.clipboard.writeText(jsonString);
+      setCopiedJson(true);
+      setTimeout(() => setCopiedJson(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy JSON:", err);
+      alert("Failed to copy JSON to clipboard");
+    }
+  };
 
   return (
     <div className="card p-4 space-y-3">
@@ -76,7 +117,27 @@ export const Results: React.FC<Props> = ({ result, loading, onRegenerate }) => {
       )}
 
       <div>
-        <h3 className="text-xs font-semibold text-slate-700 mb-1.5">Generated Description</h3>
+        <div className="flex items-center justify-between mb-1.5">
+          <h3 className="text-xs font-semibold text-slate-700">Generated Description</h3>
+          <div className="flex items-center gap-2">
+            {result.prompt_used && (
+              <button
+                onClick={copyPromptToClipboard}
+                className="text-xs px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                title="Copy prompt to clipboard"
+              >
+                {copiedPrompt ? "✓ Copied" : "Copy Prompt"}
+              </button>
+            )}
+            <button
+              onClick={copyJsonToClipboard}
+              className="text-xs px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+              title="Copy output as JSON to clipboard"
+            >
+              {copiedJson ? "✓ Copied" : "Copy JSON"}
+            </button>
+          </div>
+        </div>
         <p className="text-xs text-slate-800 whitespace-pre-line bg-slate-50 p-2.5 rounded leading-relaxed">
           {result.generated_description || "No description"}
         </p>

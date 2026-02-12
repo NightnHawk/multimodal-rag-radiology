@@ -29,6 +29,7 @@ export type QueryResponse = {
   quality_approved: boolean;
   message?: string | null;
   validation_info?: ValidationInfo | null;
+  prompt_used?: string | null;
 };
 
 

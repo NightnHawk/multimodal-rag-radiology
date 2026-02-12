@@ -15,6 +15,7 @@ type HistoryItem = {
 function App() {
   const [file, setFile] = useState<File | null>(null);
   const [useRetrievedImages, setUseRetrievedImages] = useState(false);
+  const [clearContext, setClearContext] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -29,7 +30,7 @@ function App() {
     if (!file) return;
     setLoading(true);
     try {
-      const res = await queryImage(file, useRetrievedImages);
+      const res = await queryImage(file, useRetrievedImages, clearContext);
       // Validate response structure
       if (!res || typeof res !== 'object') {
         throw new Error("Invalid response format");
@@ -42,7 +43,8 @@ function App() {
         quality_score: res.quality_score ?? null,
         quality_approved: res.quality_approved ?? false,
         message: res.message ?? null,
-        validation_info: res.validation_info ?? null
+        validation_info: res.validation_info ?? null,
+        prompt_used: res.prompt_used ?? null
       };
       setResult(validatedRes);
       setHistory((prev) => [...prev, { timestamp: Date.now(), fileName: file.name, result: validatedRes, file }]);
@@ -53,7 +55,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [file, useRetrievedImages]);
+  }, [file, useRetrievedImages, clearContext]);
 
   const handleRegenerate = useCallback(async () => {
     if (!result) return;
@@ -94,26 +96,42 @@ function App() {
           <div className="lg:col-span-2 space-y-3">
             <UploadArea onFileSelected={handleUpload} />
 
-            <div className="card p-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <input
-                  id="toggle"
-                  type="checkbox"
-                  className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary"
-                  checked={useRetrievedImages}
-                  onChange={(e) => setUseRetrievedImages(e.target.checked)}
-                />
-                <label htmlFor="toggle" className="text-xs text-slate-700 cursor-pointer">
-                  Include retrieved images in GPT prompt
-                </label>
+            <div className="card p-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="toggle-images"
+                      type="checkbox"
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary"
+                      checked={useRetrievedImages}
+                      onChange={(e) => setUseRetrievedImages(e.target.checked)}
+                    />
+                    <label htmlFor="toggle-images" className="text-xs text-slate-700 cursor-pointer">
+                      Include retrieved images in GPT prompt
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="toggle-clear"
+                      type="checkbox"
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary"
+                      checked={clearContext}
+                      onChange={(e) => setClearContext(e.target.checked)}
+                    />
+                    <label htmlFor="toggle-clear" className="text-xs text-slate-700 cursor-pointer">
+                      Clear context (start fresh conversation with GPT)
+                    </label>
+                  </div>
+                </div>
+                <button
+                  className="btn btn-primary text-sm px-3 py-1.5"
+                  disabled={!canAnalyze}
+                  onClick={handleAnalyze}
+                >
+                  {loading ? "Processing..." : "Analyze"}
+                </button>
               </div>
-              <button
-                className="btn btn-primary text-sm px-3 py-1.5"
-                disabled={!canAnalyze}
-                onClick={handleAnalyze}
-              >
-                {loading ? "Processing..." : "Analyze"}
-              </button>
             </div>
 
             <Results result={result} loading={loading} onRegenerate={handleRegenerate} />

@@ -63,6 +63,38 @@ async def health():
     )
 
 
+@app.get("/test-prompt")
+async def test_prompt():
+    """Test endpoint to verify prompt format."""
+    try:
+        from app.gpt_client import get_gpt_client
+        
+        gpt_client = get_gpt_client()
+        
+        # Test with empty documents
+        test_docs = []
+        prompt = gpt_client._build_prompt(test_docs, "dicom")
+        
+        # Check if instructions are present
+        has_markdown_instruction = "DO NOT USE MARKDOWN" in prompt
+        has_cases_instruction = "DO NOT REFER TO THE CASES" in prompt
+        
+        return {
+            "status": "ok",
+            "prompt_preview": prompt[:500],
+            "prompt_length": len(prompt),
+            "has_markdown_instruction": has_markdown_instruction,
+            "has_cases_instruction": has_cases_instruction,
+            "full_prompt": prompt
+        }
+    except Exception as e:
+        logger.error(f"Error in test-prompt endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error testing prompt: {str(e)}"
+        )
+
+
 @app.get("/opensearch/status", response_model=OpenSearchStatusResponse)
 async def opensearch_status():
     """Check OpenSearch connection and index status."""
@@ -191,7 +223,8 @@ async def index_batch(request: IndexRequest = None):
 @app.post("/query", response_model=QueryResponse)
 async def query(
     file: UploadFile = File(...),
-    use_retrieved_images: bool = Form(False)
+    use_retrieved_images: bool = Form(False),
+    clear_context: bool = Form(False)
 ):
     """
     Query endpoint: Process a DICOM or image file and generate description.
@@ -199,6 +232,7 @@ async def query(
     Args:
         file: Uploaded file (DICOM, PNG, or JPG)
         use_retrieved_images: Whether to include retrieved images in GPT prompt
+        clear_context: If True, ignore retrieved documents and analyze only the input image
         
     Returns:
         QueryResponse with generated description and retrieved documents
@@ -213,7 +247,8 @@ async def query(
         result = rag_pipeline.process_query(
             file_bytes,
             filename,
-            use_retrieved_images=use_retrieved_images
+            use_retrieved_images=use_retrieved_images,
+            clear_context=clear_context
         )
         
         return QueryResponse(**result)

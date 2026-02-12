@@ -8,10 +8,15 @@ export const api = axios.create({
   headers: { "Content-Type": "application/json" }
 });
 
-export async function queryImage(file: File, useRetrievedImages: boolean): Promise<QueryResponse> {
+export async function queryImage(
+  file: File, 
+  useRetrievedImages: boolean, 
+  clearContext: boolean = false
+): Promise<QueryResponse> {
   const form = new FormData();
   form.append("file", file);
   form.append("use_retrieved_images", String(useRetrievedImages));
+  form.append("clear_context", String(clearContext));
 
   try {
     const { data } = await api.post<QueryResponse>("/query", form, {
