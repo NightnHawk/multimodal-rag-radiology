@@ -7,7 +7,7 @@ import argparse
 import json
 import logging
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 
 from app.rag_pipeline import get_rag_pipeline
 
@@ -53,12 +53,105 @@ def _load_existing_results(output_file: Path) -> List[dict]:
         return []
 
 
-def run_batch(
+def _process_one(
+    path: Path,
     input_dir: Path,
-     output_file: Path,
+    pipeline: Any,
+    use_retrieved_images: bool,
+) -> Dict[str, Any]:
+    """Run the RAG pipeline for one DICOM path and return a results row."""
+    relative_path = str(path.relative_to(input_dir))
+    try:
+        image_bytes = path.read_bytes()
+        res = pipeline.process_query(
+            image_bytes=image_bytes,
+            filename=path.name,
+            use_retrieved_images=use_retrieved_images,
+            clear_context=True,
+        )
+        return {
+            "filename": path.name,
+            "relative_path": relative_path,
+            "generated_description": res.get("generated_description"),
+            "quality_score": res.get("quality_score"),
+            "quality_approved": res.get("quality_approved"),
+            "retrieved_documents": res.get("retrieved_documents"),
+            "validation_info": res.get("validation_info"),
+            "prompt_used": res.get("prompt_used"),
+            "message": res.get("message"),
+        }
+    except Exception as exc:
+        logger.error(f"Failed to process {path}: {exc}")
+        return {
+            "filename": path.name,
+            "relative_path": relative_path,
+            "generated_description": "",
+            "quality_score": None,
+            "quality_approved": False,
+            "retrieved_documents": [],
+            "validation_info": None,
+            "prompt_used": None,
+            "message": f"Error: {exc}",
+        }
+
+
+def run_retry_unapproved(
+    input_dir: Path,
+    output_file: Path,
     use_retrieved_images: bool,
     flush_every: int,
 ) -> None:
+    """Re-run the RAG pipeline for rows with quality_approved false; update JSON in place."""
+    input_dir = input_dir.resolve()
+    pipeline = get_rag_pipeline()
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    results = _load_existing_results(output_file)
+    if not results:
+        logger.warning(f"No existing results in {output_file}; nothing to retry.")
+        return
+
+    indices = [
+        i
+        for i, item in enumerate(results)
+        if isinstance(item, dict)
+        and item.get("quality_approved") is False
+        and item.get("relative_path")
+    ]
+    if not indices:
+        logger.info("No entries with quality_approved=false to retry.")
+        return
+
+    logger.info(f"Retrying {len(indices)} unapproved entr(y/ies)...")
+    for j, i in enumerate(indices, 1):
+        item = results[i]
+        rel = item["relative_path"]
+        path = (input_dir / rel).resolve()
+        if not path.is_file():
+            logger.warning(f"Skip retry [{j}/{len(indices)}]: file missing for {rel}")
+            continue
+
+        logger.info(f"[{j}/{len(indices)}] Reprocessing {rel}...")
+        results[i] = _process_one(
+            path, input_dir, pipeline, use_retrieved_images
+        )
+        approved = results[i].get("quality_approved")
+        score = results[i].get("quality_score")
+        logger.info(f"[{j}/{len(indices)}] Done {path.name} (approved={approved}, score={score})")
+
+        if j % flush_every == 0 or j == len(indices):
+            _write_results(results, output_file)
+            logger.info(f"Flushed progress to {output_file}")
+
+    logger.info(f"Retry complete. Updated {len(results)} rows in {output_file}")
+
+
+def run_batch(
+    input_dir: Path,
+    output_file: Path,
+    use_retrieved_images: bool,
+    flush_every: int,
+) -> None:
+    input_dir = input_dir.resolve()
     pipeline = get_rag_pipeline()
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -91,48 +184,12 @@ def run_batch(
 
     process_total = len(to_process)
     for idx, path in enumerate(to_process, 1):
-        relative_path = str(path.relative_to(input_dir))
-        try:
-            image_bytes = path.read_bytes()
-            res = pipeline.process_query(
-                image_bytes=image_bytes,
-                filename=path.name,
-                use_retrieved_images=use_retrieved_images,
-                clear_context=True,
-            )
-
-            results.append(
-                {
-                    "filename": path.name,
-                    "relative_path": relative_path,
-                    "generated_description": res.get("generated_description"),
-                    "quality_score": res.get("quality_score"),
-                    "quality_approved": res.get("quality_approved"),
-                    "retrieved_documents": res.get("retrieved_documents"),
-                    "validation_info": res.get("validation_info"),
-                    "prompt_used": res.get("prompt_used"),
-                    "message": res.get("message"),
-                }
-            )
-            logger.info(
-                f"[{idx}/{process_total}] Processed {path.name} "
-                f"(approved={res.get('quality_approved')}, score={res.get('quality_score')})"
-            )
-        except Exception as exc:
-            logger.error(f"Failed to process {path}: {exc}")
-            results.append(
-                {
-                    "filename": path.name,
-                    "relative_path": relative_path,
-                    "generated_description": "",
-                    "quality_score": None,
-                    "quality_approved": False,
-                    "retrieved_documents": [],
-                    "validation_info": None,
-                    "prompt_used": None,
-                    "message": f"Error: {exc}",
-                }
-            )
+        row = _process_one(path, input_dir, pipeline, use_retrieved_images)
+        results.append(row)
+        logger.info(
+            f"[{idx}/{process_total}] Processed {path.name} "
+            f"(approved={row.get('quality_approved')}, score={row.get('quality_score')})"
+        )
 
         # Periodic flush with simple progress indicator
         if idx % flush_every == 0 or idx == process_total:
@@ -172,18 +229,35 @@ def main() -> None:
         default=20,
         help="Write intermediate JSON every N files (default: 20).",
     )
+    parser.add_argument(
+        "--retry-unapproved",
+        action="store_true",
+        help=(
+            "Load --output JSON and re-run the RAG pipeline only for rows where "
+            "quality_approved is false, then rewrite the file (order preserved)."
+        ),
+    )
 
     args = parser.parse_args()
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
 
-    run_batch(
-        input_dir=args.input_dir,
-        output_file=args.output,
-        use_retrieved_images=args.use_retrieved_images,
-        flush_every=max(1, args.flush_every),
-    )
+    flush_every = max(1, args.flush_every)
+    if args.retry_unapproved:
+        run_retry_unapproved(
+            input_dir=args.input_dir,
+            output_file=args.output,
+            use_retrieved_images=args.use_retrieved_images,
+            flush_every=flush_every,
+        )
+    else:
+        run_batch(
+            input_dir=args.input_dir,
+            output_file=args.output,
+            use_retrieved_images=args.use_retrieved_images,
+            flush_every=flush_every,
+        )
 
 
 if __name__ == "__main__":
