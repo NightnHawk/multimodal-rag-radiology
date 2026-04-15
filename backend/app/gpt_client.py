@@ -20,6 +20,28 @@ class GPTClient:
         self.client = OpenAI(api_key=settings.openai_api_key)
         self.model = "gpt-4o"
     
+    def _build_system_prompt(self, clear_context: bool = False) -> str:
+        """
+        Build the system prompt to position the model as decision support.
+        """
+        prompt = (
+            "You are an AI assistant for licensed radiologists. Describe observable "
+            "radiographic findings in chest X-ray images to assist, not replace, clinician "
+            "judgment. Do not provide medical advice, clinical decisions, or definitive "
+            "diagnoses. Assume all data are de-identified and the output will be reviewed "
+            "by a radiologist. Only say 'Insufficient visual information to describe findings.' "
+            "if the image content is actually unreadable (missing/blank/corrupted). Otherwise, "
+            "provide the best concise observable description, even if findings are normal. "
+            "Do not refuse; stay strictly within observable-image description. End with: "
+            "'For clinician review only; not a final medical report.'"
+        )
+        if clear_context:
+            prompt += (
+                " This is a new, independent analysis. Do not reference or be influenced "
+                "by any previous queries or conversations."
+            )
+        return prompt
+
     def _image_to_base64(self, image: Image.Image) -> str:
         """
         Convert PIL Image to base64 string.
@@ -65,10 +87,7 @@ class GPTClient:
             logger.debug(f"Built prompt text (length: {len(prompt_text)}): {prompt_text[:300]}...")
             
             # Prepare API call parameters
-            # If clear_context is True, use a more explicit system prompt to ensure fresh start
-            system_prompt = "You are an expert chest X-ray radiologist."
-            if clear_context:
-                system_prompt += " This is a new, independent analysis. Do not reference or be influenced by any previous queries or conversations."
+            system_prompt = self._build_system_prompt(clear_context)
             
             # Build full prompt for return (includes system prompt and user prompt)
             full_prompt = f"System: {system_prompt}\n\nUser: {prompt_text}\n\n[Image: base64 encoded]"
@@ -138,9 +157,7 @@ class GPTClient:
             # Try to return prompt even on error if it was built
             try:
                 prompt_text = self._build_prompt(retrieved_documents, input_type)
-                system_prompt = "You are an expert chest X-ray radiologist."
-                if clear_context:
-                    system_prompt += " This is a new, independent analysis. Do not reference or be influenced by any previous queries or conversations."
+                system_prompt = self._build_system_prompt(clear_context)
                 full_prompt = f"System: {system_prompt}\n\nUser: {prompt_text}\n\n[Image: base64 encoded]"
                 raise  # Re-raise the original exception
             except:
@@ -164,7 +181,7 @@ class GPTClient:
             }
         ]
         
-        system_prompt = "You are a medical imaging expert specializing in RTG (X-ray) scan analysis."
+        system_prompt = self._build_system_prompt()
         full_prompt = f"System: {system_prompt}\n\nUser: {prompt_text}\n\n[Image: base64 encoded]"
         
         response = self.client.chat.completions.create(
@@ -197,7 +214,7 @@ class GPTClient:
         Returns:
             Formatted prompt string
         """
-        prompt = """You are an expert chest X-ray radiologist. Analyze the provided new chest X-ray image and generate a structured report using ONLY the specific numbered or bullet-point format shown in the examples below. Do not add extra commentary, explanations, or unstructured text.
+        prompt = """You are assisting licensed radiologists. Describe observable radiographic findings only; do not provide diagnoses, clinical decisions, or treatment advice. Use "Insufficient visual information to describe findings." only if the image is unreadable (missing/blank/corrupted). Otherwise, provide the best concise observable description, even if findings are normal. Generate a structured report using ONLY the specific numbered or bullet-point format shown in the examples below. Do not add extra commentary, explanations, or unstructured text.
 
 IMPORTANT INSTRUCTIONS:
 - DO NOT USE MARKDOWN format, only use plain text.
@@ -283,10 +300,7 @@ Output ONLY the formatted report - nothing else."""
             logger.debug(f"Built prompt with images (length: {len(prompt_text)}): {prompt_text[:300]}...")
             
             # Prepare API call parameters
-            # If clear_context is True, use a more explicit system prompt to ensure fresh start
-            system_prompt = "You are an expert chest X-ray radiologist."
-            if clear_context:
-                system_prompt += " This is a new, independent analysis. Do not reference or be influenced by any previous queries or conversations."
+            system_prompt = self._build_system_prompt(clear_context)
             
             # Build full prompt for return (includes system prompt and user prompt)
             full_prompt = f"System: {system_prompt}\n\nUser: {prompt_text}\n\n[Images: {len(retrieved_images) + 1} images - input image + {len(retrieved_images)} reference images, all base64 encoded]"
@@ -364,9 +378,7 @@ Output ONLY the formatted report - nothing else."""
             # Try to return prompt even on error if it was built
             try:
                 prompt_text = self._build_prompt_with_images(retrieved_documents)
-                system_prompt = "You are an expert chest X-ray radiologist."
-                if clear_context:
-                    system_prompt += " This is a new, independent analysis. Do not reference or be influenced by any previous queries or conversations."
+                system_prompt = self._build_system_prompt(clear_context)
                 full_prompt = f"System: {system_prompt}\n\nUser: {prompt_text}\n\n[Images: {len(retrieved_images) + 1} images - input image + {len(retrieved_images)} reference images, all base64 encoded]"
                 raise  # Re-raise the original exception
             except:
@@ -377,7 +389,7 @@ Output ONLY the formatted report - nothing else."""
         retrieved_documents: List[Dict[str, Any]]
     ) -> str:
         """Build prompt when images are also provided."""
-        prompt = """You are an expert chest X-ray radiologist. Analyze the provided new chest X-ray image and generate a structured report using ONLY the specific numbered or bullet-point format shown in the examples below. Do not add extra commentary, explanations, or unstructured text.
+        prompt = """You are assisting licensed radiologists. Describe observable radiographic findings only; do not provide diagnoses, clinical decisions, or treatment advice. Use "Insufficient visual information to describe findings." only if the image is unreadable (missing/blank/corrupted). Otherwise, provide the best concise observable description, even if findings are normal. Generate a structured report using ONLY the specific numbered or bullet-point format shown in the examples below. Do not add extra commentary, explanations, or unstructured text.
 
 IMPORTANT INSTRUCTIONS:
 - DO NOT USE MARKDOWN format, only use plain text.
