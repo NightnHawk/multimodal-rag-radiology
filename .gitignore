@@ -100,3 +100,16 @@ logs/
 # OpenSearch
 opensearch-data/
 
+
+# Markdown files
+*.md
+
+# PDF files
+*pdf
+
+# LaTeX files
+*.tex
+*.aux
+*.log
+*.out
+*.toc
